@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>libmedia check: reports 69 and 70</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 14px/1.45 system-ui, sans-serif; margin: 16px; max-width: 1400px; }
+  h2 { margin: 28px 0 4px; }
+  .case { display: inline-block; vertical-align: top; width: 660px; margin: 8px 12px 8px 0; }
+  .player { width: 640px; height: 360px; background: #111; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #f3f3f3; padding: 6px; margin: 4px 0; min-height: 3em; font-size: 12px; }
+  .verdict { font-weight: bold; }
+  .ok { color: #070; } .bad { color: #b00; }
+  .expect { color: #555; margin: 2px 0 6px; }
+  button { font-size: 14px; padding: 4px 10px; }
+  #copy { display: block; width: 100%; height: 120px; font: 12px monospace; }
+</style>
+</head>
+<body>
+<h1>libmedia check: reports 69 and 70</h1>
+<p id="support">Looking at the browser...</p>
+<p>Click a button, wait about 20 seconds, read the text under the player. Use "Copy the whole report" at the bottom to get everything as text.</p>
+
+<h2>Report 69: AC-3 and E-AC-3 sound through MSE</h2>
+<p class="expect">1.3.1 is expected not to start with the E-AC-3 and AC-3 files (a <code>numIndSub</code> or <code>substream</code> error in the MSE worker, which this page cannot see). Master is expected to play. The AAC control plays with both.</p>
+<div id="cases69"></div>
+
+<h2>Report 70: HDR10 colours through WebCodecs</h2>
+<p class="expect">1.3.1 is expected to look flat (little contrast and saturation). Master is expected to look natural. The "both" buttons play 1.3.1 on the left and master on the right so the eye can compare. The test picture is a synthetic pattern: judge by the strength of the colours and the black and white levels.</p>
+<div id="cases70"></div>
+
+<h2>Report</h2>
+<textarea id="copy" readonly></textarea>
+<button id="copyButton">Copy the whole report</button>
+
+<script type="module">
+const TIMEOUT = 15000, LOOK_AFTER = 4000
+const $ = (id) => document.getElementById(id)
+const ms = (n) => (n / 1000).toFixed(1) + ' s'
+
+const cases = [
+  { id: '69-eac3-131', group: '69', build: '1.3.1', file: 'hdr10-eac3.mkv', options: {}, title: 'E-AC-3 + HDR10, libmedia 1.3.1', expect: 'Expected: does not start after 15 s (readyState 0).' },
+  { id: '69-eac3-master', group: '69', build: 'master', file: 'hdr10-eac3.mkv', options: {}, title: 'E-AC-3 + HDR10, libmedia master', expect: 'Expected: plays (readyState 3 or more, currentTime moving).' },
+  { id: '69-ac3-131', group: '69', build: '1.3.1', file: 'hdr10-ac3.mkv', options: { checkUseMSE: () => true }, title: 'AC-3 + HDR10, libmedia 1.3.1', expect: 'Expected: does not start after 15 s. The AC-3 button also uses checkUseMSE: () => true, so MSE is taken whatever the browser says.' },
+  { id: '69-ac3-master', group: '69', build: 'master', file: 'hdr10-ac3.mkv', options: { checkUseMSE: () => true }, title: 'AC-3 + HDR10, libmedia master', expect: 'Expected: plays.' },
+  { id: '69-aac-131', group: '69', build: '1.3.1', file: 'hdr10-aac.mkv', options: {}, title: 'AAC control, libmedia 1.3.1', expect: 'Expected: plays.' },
+  { id: '69-aac-master', group: '69', build: 'master', file: 'hdr10-aac.mkv', options: {}, title: 'AAC control, libmedia master', expect: 'Expected: plays.' },
+  { id: '70-eac3-131', group: '70', build: '1.3.1', file: 'hdr10-eac3.mkv', options: { checkUseMSE: () => false }, title: 'E-AC-3 + HDR10, WebCodecs forced, libmedia 1.3.1', expect: 'Expected: plays, picture flat.' },
+  { id: '70-eac3-master', group: '70', build: 'master', file: 'hdr10-eac3.mkv', options: { checkUseMSE: () => false }, title: 'E-AC-3 + HDR10, WebCodecs forced, libmedia master', expect: 'Expected: plays, natural contrast and saturation.' },
+  { id: '70-dts-131', group: '70', build: '1.3.1', file: 'hdr10-dts.mkv', options: {}, title: 'DTS + HDR10, default options, libmedia 1.3.1', expect: 'Expected: plays through WebCodecs, picture flat.' },
+  { id: '70-dts-master', group: '70', build: 'master', file: 'hdr10-dts.mkv', options: {}, title: 'DTS + HDR10, default options, libmedia master', expect: 'Expected: plays through WebCodecs, natural contrast and saturation.' },
+]
+const byId = Object.fromEntries(cases.map((c) => [c.id, c]))
+const pairs = [['70-eac3-131', '70-eac3-master', 'Play both (E-AC-3, WebCodecs forced)'], ['70-dts-131', '70-dts-master', 'Play both (DTS, default options)']]
+
+// What the browser supports
+const mime = (t) => (window.MediaSource ? MediaSource.isTypeSupported(t) : 'no MediaSource')
+const supportLine =
+  `crossOriginIsolated: ${self.crossOriginIsolated}; MSE hvc1.2.4.L153.B0: ${mime('video/mp4; codecs="hvc1.2.4.L153.B0"')}; ` +
+  `MSE ec-3: ${mime('audio/mp4; codecs="ec-3"')}; MSE ac-3: ${mime('audio/mp4; codecs="ac-3"')}; ` +
+  `VideoDecoder: ${typeof VideoDecoder !== 'undefined'}; ManagedMediaSource: ${typeof ManagedMediaSource !== 'undefined'}; ` +
+  `MediaSourceHandle: ${typeof MediaSourceHandle !== 'undefined'}`
+$('support').textContent = supportLine + ' | ' + navigator.userAgent
+
+// Capture the page console and the unhandled errors for the running cases
+const running = new Set()
+const send = (text) => { for (const s of running) s.lines.push(text) }
+for (const level of ['log', 'info', 'warn', 'error']) {
+  const original = console[level].bind(console)
+  console[level] = (...args) => {
+    original(...args)
+    const text = args.map((a) => (a instanceof Error ? a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ')
+    if (/mse|webcodec|webgl|webgpu|hdr|fallback|support|cannot|can not|error|fail|audioContext|render/i.test(text)) send(`console.${level}: ${text}`)
+  }
+}
+addEventListener('unhandledrejection', (e) => send(`ERROR unhandledrejection: ${e.reason?.message ?? e.reason}`))
+addEventListener('error', (e) => send(`ERROR error: ${e.message}`))
+
+const modules = {}
+const loadBuild = (build) => (modules[build] ??= import(`./libmedia-${build}/esm/avplayer.js`).then((m) => m.default))
+
+const reports = {}
+for (const c of cases) {
+  const root = document.createElement('div')
+  root.className = 'case'
+  root.innerHTML = `<b></b><div class="expect"></div><button>Play</button><div class="player"></div><div class="verdict">not run</div><pre></pre>`
+  root.querySelector('b').textContent = c.title
+  root.querySelector('.expect').textContent = c.expect
+  c.root = root
+  c.state = { lines: [], player: null }
+  root.querySelector('button').onclick = () => run(c)
+  $(c.group === '69' ? 'cases69' : 'cases70').append(root)
+}
+for (const [a, b, label] of pairs) {
+  const button = document.createElement('button')
+  button.textContent = label
+  button.onclick = async () => { await run(byId[a]); await run(byId[b], [byId[a]]) }
+  const host = byId[a].root.parentElement
+  host.insertBefore(button, byId[a].root)
+}
+
+async function run(c, keep = []) {
+  // One film at a time costs less CPU: pause every other player, except the one of a pair.
+  // (Destroying them right before a new player starts made libmedia's shared threads flaky.)
+  for (const other of cases) {
+    if (other !== c && !keep.includes(other) && other.state.player) { try { await other.state.player.pause() } catch {} }
+  }
+  const s = c.state
+  const out = c.root.querySelector('pre'), verdictEl = c.root.querySelector('.verdict'), box = c.root.querySelector('.player')
+  if (s.player) { try { await s.player.destroy() } catch {} ; await new Promise((r) => setTimeout(r, 700)) }
+  box.replaceChildren()
+  s.lines = []
+  running.add(s)
+  const t0 = performance.now()
+  const report = []
+  const write = (text) => { report.push(text); out.textContent = report.join('\n'); refreshAll() }
+  const finish = (verdict, good) => {
+    verdictEl.textContent = verdict
+    verdictEl.className = 'verdict ' + (good ? 'ok' : 'bad')
+    reports[c.id] = `[${c.title}] ${c.file}\nVERDICT: ${verdict}\n${report.join('\n')}\n${s.lines.join('\n')}`
+    out.textContent = reports[c.id].split('\n').slice(2).join('\n')
+    running.delete(s)
+    refreshAll()
+  }
+  verdictEl.textContent = 'running...'; verdictEl.className = 'verdict'
+  try {
+    const AVPlayer = await loadBuild(c.build)
+    const player = (s.player = new AVPlayer({
+      container: box,
+      wasmBaseUrl: new URL(`./libmedia-${c.build}`, location.href).href,
+      enableHardware: true,
+      preLoadTime: 1,
+      ...c.options,
+    }))
+    const settled = (promise, name) => promise.then(
+      () => write(`${name} settled after ${ms(performance.now() - t0)}`),
+      (e) => { write(`${name} REJECTED after ${ms(performance.now() - t0)}: ${e?.message ?? e}`); throw e })
+    const timeout = (name) => new Promise((_, rej) => setTimeout(() => rej(new Error(`${name} did not settle`)), TIMEOUT))
+    let timedOut = false
+    try {
+      await Promise.race([settled(player.load(new URL(`./media/${c.file}`, location.href).href), 'load'), timeout('load')])
+      await Promise.race([settled(player.play(), 'play'), timeout('play')])
+    } catch (e) {
+      if (/did not settle/.test(e.message)) { timedOut = true; write(`${e.message} within ${ms(TIMEOUT)}`) } else { write(`ERROR: ${e?.message ?? e}`) }
+    }
+    if (!timedOut) await new Promise((r) => setTimeout(r, LOOK_AFTER))
+    const video = box.querySelector('video'), canvas = box.querySelector('canvas')
+    let healthy = false
+    if (video) {
+      write(`<video> present: readyState ${video.readyState}, currentTime ${video.currentTime.toFixed(2)}, paused ${video.paused}, networkState ${video.networkState}, error ${video.error ? video.error.message : 'null'}, srcObject ${video.srcObject ? 'set' : 'null'}`)
+      healthy = !timedOut && video.readyState >= 2 && video.currentTime > 0
+    }
+    if (canvas) {
+      write(`<canvas> present (${canvas.width}x${canvas.height}): WebCodecs or wasm path`)
+      healthy = !timedOut && !video
+    }
+    if (!video && !canvas) write('no <video> and no <canvas> inside the player')
+    const errors = s.lines.filter((l) => /^ERROR/.test(l))
+    if (errors.length) healthy = false
+    if (!video?.readyState && video) healthy = false
+    write('player log lines:')
+    finish(healthy ? 'plays' : `does not start after ${TIMEOUT / 1000} s`, healthy)
+  } catch (e) {
+    write(`ERROR: ${e?.stack ?? e}`)
+    finish('does not start after 15 s (error while setting up)', false)
+  }
+}
+
+function refreshAll() {
+  $('copy').value = `${supportLine}\n${navigator.userAgent}\n\n` + cases.map((c) => reports[c.id] ?? `[${c.title}] not run`).join('\n\n')
+}
+refreshAll()
+$('copyButton').onclick = () => { $('copy').select(); try { navigator.clipboard.writeText($('copy').value) } catch {} }
+window.__ready = true
+</script>
+</body>
+</html>
